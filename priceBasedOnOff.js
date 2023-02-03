@@ -5,11 +5,15 @@ let CONFIG = {
     inUseLimit: 5.0, // nr of wats required to consider the controlled unit to be running and to not swith it of 
     updateTime: 300000, // 5 minutes. Price update interval in milliseconds
     switchId: 0, // the id of the switch starts at 0
-    allwaysOnMaxprice: 1.0, // SEK/kWh if the price is below this value the switch should be on (price without tax or other fees)
+    allwaysOnMaxprice: 1.0, // SEK/kWh if the price is below or equal this value the switch should be on no matter if checkNextXHours would turn it off (price without tax or other fees)
     onOffLimit: 1.0, // is used to set the price limit where to turn on and of switch
     //so if current price > (avg price * onOffLimit)  then turn off
     //and if current price <= (avg price * onOffLimit) then turn on
-    checkNextXHours: 1, // check that the price do not go over the limit the next x hours is it does then switch of now (will only check current day and not after midnight)
+    checkNextXHours: 1, // check that the price do not go over the limit the next x hours if it is then switch off now,
+    // will check until a to price that will switch off or all hour have low price.
+    stopAtMidnight: false,
+    // if stopAtMidnight is false will only check current days values and if it passes midnight it will use the prices from current days morning,
+    // if stopAtMidnight is true will only check current days values and if it passes midnight it will stop checking more values,
     debugMode: true, // Set to false to enable switching of power.
 };
 
@@ -25,8 +29,9 @@ let date = null;
 let lastHour = null;
 let hour = null;
 let minute = null;
-let currentState = null;
-let debugState = null;
+let currentSwitchState = null;
+let debugSwitchState = null;
+let powerUsage = null;
 
 
 function getCurrentUsage() {
@@ -41,20 +46,21 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
         print(errorMessage);
         return;
     }
-    print("Current usage: " + JSON.stringify(response.apower) + "w");
-    currentState = response.output;
+    print();
+    currentSwitchState = response.output;
+    powerUsage = response.apower;
     if (CONFIG.debugMode) {
-        debugState = debugState === null ? currentState : debugState;
-        if (currentState !== debugState) {
-            print("Overiding currentState (" + (currentState ? "on" : "off") + ") with debugState: " + (debugState ? "on" : "off"));
+        debugSwitchState = debugSwitchState === null ? currentSwitchState : debugSwitchState;
+        if (currentSwitchState !== debugSwitchState) {
+            print("Overiding currentSwitchState (" + (currentSwitchState ? "on" : "off") + ") with debugSwitchState: " + (debugSwitchState ? "on" : "off"));
         }
-        currentState = debugState;
+        currentSwitchState = debugSwitchState;
     }
-    if (response.output === true) {
-        if (response.apower > CONFIG.inUseLimit) {
-            print("Switch is on and used");
+    if (currentSwitchState === true) {
+        if (powerUsage > CONFIG.inUseLimit) {
+            print("Switch is on and used, not checking price. Current usage: " + JSON.stringify(powerUsage) + "w");
         } else {
-            print("Switch is on and not used");
+            print("Switch is on and not used. Current usage: " + JSON.stringify(powerUsage) + "w");
             getCurrentDateAndTime();
         }
     } else {
@@ -124,46 +130,47 @@ function processCurrentPriceResponse(response, errorCode, errorMessage) {
 
 function switchOnOrOff() {
     let limit = avg * CONFIG.onOffLimit;
-    let switchState = true;
-    for (let i = 0; i <= CONFIG.checkNextXHours; i++) {
-        let price = prices[JSON.stringify(JSON.parse(hour) + i)];
-        if (price <= CONFIG.allwaysOnMaxprice) {
-            switchState = switchState && true;
-        } else if (price <= limit) {
-            switchState = switchState && true;
+    let newSwitchState = true;
+    for (let i = 0; i <= CONFIG.checkNextXHours && newSwitchState; i++) {
+        let hint = (JSON.parse(hour) + i) % prices.length;
+        let h = (hint < 10 ? "0" : "") + JSON.stringify(hint);
+        let price = prices[h];
+        if (price <= CONFIG.allwaysOnMaxprice || price <= limit) {
+            newSwitchState = newSwitchState && true;
         } else if (price > limit) {
-            switchState = false;
+            newSwitchState = false;
         }
-        print(date + ": Hour+" + JSON.stringify(i) + " price: " + JSON.stringify(price) + " SEK/kWh, avg price today: " + JSON.stringify(avg) + " SEK/kWh, cut of limit: " + JSON.stringify(limit) + " SEK/kWh, always on limit: " + JSON.stringify(CONFIG.allwaysOnMaxprice) + " SEK/kWh, setting switch: " + (switchState ? "on" : "off"));
+        print(date + ": Hour: " + h + " price: " + JSON.stringify(price) + " SEK/kWh, avg price today: " + JSON.stringify(avg) + " SEK/kWh, cut of limit: " + JSON.stringify(limit) + " SEK/kWh, always on limit: " + JSON.stringify(CONFIG.allwaysOnMaxprice) + " SEK/kWh, setting switch: " + (newSwitchState ? "on" : "off"));
+        if (hint >= 23 && CONFIG.stopAtMidnight) {
+            print("Stopping check at midnight");
+            i = 99999;//a heigh value to stop the loop
+        }
     }
-    if (!switchState && prices[hour] <= CONFIG.allwaysOnMaxprice) {
+    if (!newSwitchState && prices[hour] <= CONFIG.allwaysOnMaxprice) {
         print("Overriding switch to true as current price is below allways on price");
-        switchState = true;
+        newSwitchState = true;
     }
-    changeSwitchState(switchState);
-}
 
-function changeSwitchState(state) {
-    if (currentState === state) {
-        print("No state change... ( current state: " + (state ? "on" : "off") + ")");
+    if (currentSwitchState === newSwitchState) {
+        print("No state change... ( current state: " + (newSwitchState ? "on" : "off") + ")");
         return;
-    } else if (state === false) {
+    } else if (newSwitchState === false) {
         print("Switching off!");
-    } else if (state === true) {
+    } else if (newSwitchState === true) {
         print("Switching on!");
     } else {
         print("Unknown state");
         return;
     }
     if (CONFIG.debugMode) {
-        print("Debug mode on, not changing switch to: " + (state ? "on" : "off"));
-        debugState = state;
+        print("Debug mode on, simulating changing switch to: " + (newSwitchState ? "on" : "off"));
+        debugSwitchState = newSwitchState;
     } else {
         Shelly.call(
             "Switch.Set",
             {
                 id: CONFIG.switchId,
-                on: state,
+                on: newSwitchState,
             },
             function (response, errorCode, errorMessage) {
                 if (errorCode !== 0) {
