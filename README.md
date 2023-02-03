@@ -1,2 +1,2 @@
 # shelly
-Shelly scripte
+Shelly scripts
