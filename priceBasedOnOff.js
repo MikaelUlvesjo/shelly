@@ -4,7 +4,7 @@ let CONFIG = {
     timezone: 1, //in positive or negative value e.g: 1 for CET or -6 for CST
     daylightSaving: true,//boolean, if true and date is after last Sunday in March and Before last Sunday in October 1 hour weill be added to timezone.
     zone: "SE4", // SE1,SE2,SE3 or SE4
-    inUseLimit: 5.0, // nr of wats required to consider the controlled unit to be running and to not swith it of 
+    inUseLimit: 5.0, // nr of wats required to consider the controlled unit to be running and to not swith it of if not a pm shelly set this to -1
     updateTime: 300000, // 5 minutes. Price update interval in milliseconds
     switchId: 0, // the id of the switch starts at 0
     allwaysOnMaxprice: 1.3, // SEK/kWh if the price is below or equal this value the switch should be on no matter if checkNextXHours would turn it off (price without tax or other fees)
@@ -44,7 +44,7 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
         return;
     }
     currentSwitchState = response.output;
-    powerUsage = response.apower;
+    powerUsage = CONFIG.inUseLimit >= 0 ? response.apower : 0.0;
     date = epochToDate(response.aenergy.minute_ts, CONFIG.timezone, CONFIG.daylightSaving);
     if (CONFIG.debugMode) {
         debugSwitchState = debugSwitchState === null ? currentSwitchState : debugSwitchState;
