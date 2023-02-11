@@ -4,10 +4,11 @@ let CONFIG = {
     timezone: 1, //in positive or negative value e.g: 1 for CET or -6 for CST
     daylightSaving: true,//boolean, if true and date is after last Sunday in March and Before last Sunday in October 1 hour weill be added to timezone.
     zone: "SE4", // SE1,SE2,SE3 or SE4
-    inUseLimit: 5.0, // nr of wats required to consider the controlled unit to be running and to not swith it of if not a pm shelly set this to -1
+    inUseLimit: 5.0, // nr of wats required to consider the controlled unit to be running and to not swith it of for non pm units set this to -1.0 
     updateTime: 300000, // 5 minutes. Price update interval in milliseconds
     switchId: 0, // the id of the switch starts at 0
-    allwaysOnMaxprice: 1.3, // SEK/kWh if the price is below or equal this value the switch should be on no matter if checkNextXHours would turn it off (price without tax or other fees)
+    allwaysOnMaxPrice: 1.3, // SEK/kWh if the price is below or equal this value the switch should be on no matter if checkNextXHours would turn it off (price without tax or other fees)
+    allwaysOffMminPrice: 3.0, // SEK/kWh if the price is above or equal this value the switch should be off no matter if checkNextXHours would turn it on (price without tax or other fees)
     allwaysOnHours: [{ from: 21, to: 23 }], //Time spans when allways on format [{from: 10, to:12},{from: 20, to:23}]
     onOffLimit: 1.1, // is used to set the price limit where to turn on and of switch
     //so if current price > (avg price * onOffLimit)  then turn off
@@ -30,6 +31,29 @@ let currentSwitchState = null;
 let debugSwitchState = null;
 let powerUsage = null;
 
+function start() {
+    if (CONFIG.inUseLimit < 0.0) {
+        getCurrentDate();
+    } else {
+        getCurrentUsage();
+    }
+}
+
+function getCurrentDate() {
+    Shelly.call("Sys.GetStatus",
+        {
+            id: CONFIG.switchId,
+        }, processCurrentDate);
+}
+
+function processCurrentDate(response, errorCode, errorMessage) {
+    if (errorCode !== 0) {
+        print(errorMessage);
+        return;
+    }
+    date = epochToDate(response.unixtime, CONFIG.timezone, CONFIG.daylightSaving);
+    getCurrentUsage();
+}
 
 function getCurrentUsage() {
     Shelly.call("switch.getstatus",
@@ -44,8 +68,12 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
         return;
     }
     currentSwitchState = response.output;
-    powerUsage = CONFIG.inUseLimit >= 0 ? response.apower : 0.0;
-    date = epochToDate(response.aenergy.minute_ts, CONFIG.timezone, CONFIG.daylightSaving);
+    if (CONFIG.inUseLimit >= 0) {
+        powerUsage = response.apower;
+        date = epochToDate(response.aenergy.minute_ts, CONFIG.timezone, CONFIG.daylightSaving);
+    } else {
+        powerUsage = 0.0;
+    }
     if (CONFIG.debugMode) {
         debugSwitchState = debugSwitchState === null ? currentSwitchState : debugSwitchState;
         if (currentSwitchState !== debugSwitchState) {
@@ -54,7 +82,10 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
         currentSwitchState = debugSwitchState;
     }
     if (currentSwitchState === true) {
-        if (powerUsage > CONFIG.inUseLimit) {
+        if (CONFIG.inUseLimit < 0.0) {
+            print("Switch is on");
+            getCurrentPrice(0);
+        } else if (powerUsage > CONFIG.inUseLimit) {
             print("Switch is on and used, not checking price. Current usage: " + JSON.stringify(powerUsage) + "w");
         } else {
             print("Switch is on and not used. Current usage: " + JSON.stringify(powerUsage) + "w");
@@ -120,18 +151,18 @@ function switchOnOrOff() {
     for (let i = 0; i <= CONFIG.checkNextXHours && newSwitchState; i++) {
         let h = (date.hour + i) % prices.length;
         let price = prices[h];
-        if (price <= CONFIG.allwaysOnMaxprice || price <= limit) {
+        if (price <= CONFIG.allwaysOnMaxPrice || price <= limit) {
             newSwitchState = newSwitchState && true;
-        } else if (price > limit) {
+        } else if (price > limit || price >= CONFIG.allwaysOffMminPrice) {
             newSwitchState = false;
         }
-        print(date.date + ": Hour: " + JSON.stringify(h) + " price: " + JSON.stringify(price) + " SEK/kWh, avg price today: " + JSON.stringify(avg) + " SEK/kWh, cut of limit: " + JSON.stringify(limit) + " SEK/kWh, always on limit: " + JSON.stringify(CONFIG.allwaysOnMaxprice) + " SEK/kWh, setting switch: " + (newSwitchState ? "on" : "off"));
+        print(date.date + ": Hour: " + JSON.stringify(h) + " price: " + JSON.stringify(price) + " SEK/kWh, avg price today: " + JSON.stringify(avg) + " SEK/kWh, cut of limit: " + JSON.stringify(limit) + " SEK/kWh, always on limit: " + JSON.stringify(CONFIG.allwaysOnMaxPrice) + " SEK/kWh, setting switch: " + (newSwitchState ? "on" : "off"));
         if (h >= prices.length && CONFIG.stopAtDataEnd) {
             print("Stopping check at data end");
             i = 99999; //a heigh value to stop the loop
         }
     }
-    if (!newSwitchState && prices[date.hour] <= CONFIG.allwaysOnMaxprice) {
+    if (!newSwitchState && prices[date.hour] <= CONFIG.allwaysOnMaxPrice) {
         print("Overriding switch to true as current price is below allways on price");
         newSwitchState = true;
     }
@@ -240,7 +271,7 @@ function epochToDate(epochTimeIn, timezone, daylightSavingTime) {
     };
 }
 
-getCurrentUsage();
+start();
 Timer.set(CONFIG.updateTime, true, function (userdata) {
-    getCurrentUsage();
+    start();
 });
