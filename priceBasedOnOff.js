@@ -18,6 +18,7 @@ let CONFIG = {
     stopAtDataEnd: true,
     // if stopAtDataEnd is false will only check values that exists in the data and if it passes the end of the data it will start from the first value,
     // if stopAtDataEnd is true will only check current days values and if it passes the end of the data it will stop checking more values,
+    invertSwitch: false, // invert the switch action.
     debugMode: true, // Set to false to enable switching of power.
 };
 let prices = [];
@@ -68,6 +69,9 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
         return;
     }
     currentSwitchState = response.output;
+    if (CONFIG.invertSwitch) {
+        currentSwitchState = !currentSwitchState;
+    }
     if (CONFIG.inUseLimit >= 0) {
         powerUsage = response.apower;
         date = epochToDate(response.aenergy.minute_ts, CONFIG.timezone, CONFIG.daylightSaving);
@@ -173,7 +177,9 @@ function switchOnOrOff() {
             newSwitchState = true;
         }
     }
-
+    if (CONFIG.invertSwitch) {
+        newSwitchState = !newSwitchState;
+    }
     if (currentSwitchState === newSwitchState) {
         print("No state change... ( current state: " + (newSwitchState ? "on" : "off") + ")");
         return;
