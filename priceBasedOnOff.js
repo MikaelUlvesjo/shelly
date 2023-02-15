@@ -8,8 +8,8 @@ let CONFIG = {
     updateTime: 300000, // 5 minutes. Price update interval in milliseconds
     switchId: 0, // the id of the switch starts at 0
     allwaysOnMaxPrice: 1.3, // SEK/kWh if the price is below or equal this value the switch should be on no matter if checkNextXHours would turn it off (price without tax or other fees)
-    allwaysOffMinPrice: 3.0, // SEK/kWh if the price is above or equal this value the switch should be off no matter if checkNextXHours would turn it on (price without tax or other fees)
-    allwaysOnHours: [{ from: 21, to: 23 }], //Time spans when allways on format [{from: 8, to:8},{from: 20, to:23}]
+    allwaysOffMinPrice: 3.0, // SEK/kWh if the price is above or equal this value the switch should be off no matter if allwaysOnHours would turn it on (price without tax or other fees)
+    allwaysOnHours: [{ from: 21, to: 23 }], //Time spans when allways on format [{from: 8, to:8},{from: 20, to:23}] 
     onOffLimit: 1.1, // is used to set the price limit where to turn on and of switch
     //so if current price > (avg price * onOffLimit)  then turn off
     //and if current price <= (avg price * onOffLimit) then turn on
@@ -152,28 +152,28 @@ function switchOnOrOff() {
     for (let i = 0; i <= CONFIG.checkNextXHours && newSwitchState; i++) {
         let h = (date.hour + i) % prices.length;
         let price = prices[h];
-        if (price <= CONFIG.allwaysOnMaxPrice || price <= limit) {
-            newSwitchState = newSwitchState && true;
-        } else if (price > limit || price >= CONFIG.allwaysOffMinPrice) {
-            newSwitchState = false;
-        }
+        newSwitchState = newSwitchState && (price <= CONFIG.allwaysOnMaxPrice || price <= limit);
         print(date.date + ": Hour: " + JSON.stringify(h) + " price: " + JSON.stringify(price) + " SEK/kWh, avg price today: " + JSON.stringify(avg) + " SEK/kWh, cut of limit: " + JSON.stringify(limit) + " SEK/kWh, always on limit: " + JSON.stringify(CONFIG.allwaysOnMaxPrice) + " SEK/kWh, setting switch: " + (newSwitchState ? "on" : "off"));
         if (h >= prices.length && CONFIG.stopAtDataEnd) {
             print("Stopping check at data end");
             i = 99999; //a heigh value to stop the loop
         }
     }
-    if (!newSwitchState && prices[date.hour] <= CONFIG.allwaysOnMaxPrice) {
-        print("Overriding switch to on as current price is below allways on price");
-        newSwitchState = true;
-    }
-
     for (let i = 0; i < CONFIG.allwaysOnHours.length && !newSwitchState; i++) {
         if (date.hour >= CONFIG.allwaysOnHours[i].from && date.hour <= CONFIG.allwaysOnHours[i].to) {
             print("Overriding switch to on as current hour is within allwaysOnHours");
             newSwitchState = true;
         }
     }
+    if (!newSwitchState && prices[date.hour] <= CONFIG.allwaysOnMaxPrice) {
+        print("Overriding switch to on as current price is below allways on price");
+        newSwitchState = true;
+    }
+    if (newSwitchState && prices[date.hour] >= CONFIG.allwaysOffMinPrice) {
+        print("Overriding switch to off as current price is above allways off price");
+        newSwitchState = false;
+    }
+    
     if (CONFIG.invertSwitch) {
         newSwitchState = !newSwitchState;
         print("Inverting wanted switch state to: " + (newSwitchState ? "on" : "off"));
