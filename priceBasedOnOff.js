@@ -8,8 +8,8 @@ let CONFIG = {
     updateTime: 300000, // 5 minutes. Price update interval in milliseconds
     switchId: 0, // the id of the switch starts at 0
     allwaysOnMaxPrice: 1.3, // SEK/kWh if the price is below or equal this value the switch should be on no matter if checkNextXHours would turn it off (price without tax or other fees)
-    allwaysOffMminPrice: 3.0, // SEK/kWh if the price is above or equal this value the switch should be off no matter if checkNextXHours would turn it on (price without tax or other fees)
-    allwaysOnHours: [{ from: 21, to: 23 }], //Time spans when allways on format [{from: 10, to:12},{from: 20, to:23}]
+    allwaysOffMinPrice: 3.0, // SEK/kWh if the price is above or equal this value the switch should be off no matter if checkNextXHours would turn it on (price without tax or other fees)
+    allwaysOnHours: [{ from: 21, to: 23 }], //Time spans when allways on format [{from: 8, to:8},{from: 20, to:23}]
     onOffLimit: 1.1, // is used to set the price limit where to turn on and of switch
     //so if current price > (avg price * onOffLimit)  then turn off
     //and if current price <= (avg price * onOffLimit) then turn on
@@ -18,7 +18,7 @@ let CONFIG = {
     stopAtDataEnd: true,
     // if stopAtDataEnd is false will only check values that exists in the data and if it passes the end of the data it will start from the first value,
     // if stopAtDataEnd is true will only check current days values and if it passes the end of the data it will stop checking more values,
-    invertSwitch: false, // invert the switch action.
+    invertSwitch: false, // invert the switch action. Set inUseLimit: -1.0 to use this.
     debugMode: true, // Set to false to enable switching of power.
 };
 let prices = [];
@@ -69,9 +69,6 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
         return;
     }
     currentSwitchState = response.output;
-    if (CONFIG.invertSwitch) {
-        currentSwitchState = !currentSwitchState;
-    }
     if (CONFIG.inUseLimit >= 0) {
         powerUsage = response.apower;
         date = epochToDate(response.aenergy.minute_ts, CONFIG.timezone, CONFIG.daylightSaving);
@@ -141,7 +138,7 @@ function processCurrentPriceResponse(response, errorCode, errorMessage, userdata
         min = min === null || o.SEK_per_kWh < min ? o.SEK_per_kWh : min;
         max = max === null || o.SEK_per_kWh > max ? o.SEK_per_kWh : max;
     }
-    avg = sum / data.length;
+    avg = userdata.offset === 0 ? sum / data.length : avg;
     switchOnOrOff();
 }
 
@@ -157,7 +154,7 @@ function switchOnOrOff() {
         let price = prices[h];
         if (price <= CONFIG.allwaysOnMaxPrice || price <= limit) {
             newSwitchState = newSwitchState && true;
-        } else if (price > limit || price >= CONFIG.allwaysOffMminPrice) {
+        } else if (price > limit || price >= CONFIG.allwaysOffMinPrice) {
             newSwitchState = false;
         }
         print(date.date + ": Hour: " + JSON.stringify(h) + " price: " + JSON.stringify(price) + " SEK/kWh, avg price today: " + JSON.stringify(avg) + " SEK/kWh, cut of limit: " + JSON.stringify(limit) + " SEK/kWh, always on limit: " + JSON.stringify(CONFIG.allwaysOnMaxPrice) + " SEK/kWh, setting switch: " + (newSwitchState ? "on" : "off"));
@@ -167,18 +164,19 @@ function switchOnOrOff() {
         }
     }
     if (!newSwitchState && prices[date.hour] <= CONFIG.allwaysOnMaxPrice) {
-        print("Overriding switch to true as current price is below allways on price");
+        print("Overriding switch to on as current price is below allways on price");
         newSwitchState = true;
     }
 
     for (let i = 0; i < CONFIG.allwaysOnHours.length && !newSwitchState; i++) {
         if (date.hour >= CONFIG.allwaysOnHours[i].from && date.hour <= CONFIG.allwaysOnHours[i].to) {
-            print("Overriding switch to true as current hour is within allwaysOnHours");
+            print("Overriding switch to on as current hour is within allwaysOnHours");
             newSwitchState = true;
         }
     }
     if (CONFIG.invertSwitch) {
         newSwitchState = !newSwitchState;
+        print("Inverting wanted switch state to: " + (newSwitchState ? "on" : "off"));
     }
     if (currentSwitchState === newSwitchState) {
         print("No state change... ( current state: " + (newSwitchState ? "on" : "off") + ")");
@@ -192,7 +190,7 @@ function switchOnOrOff() {
         return;
     }
     if (CONFIG.debugMode) {
-        print("Debug mode on, simulating changing switch to: " + (newSwitchState ? "on" : "off"));
+        print("Debug mode on, simulating changing switch to: " + (newSwitchState ? "on" : "off") + ")");
         debugSwitchState = newSwitchState;
     } else {
         Shelly.call(
