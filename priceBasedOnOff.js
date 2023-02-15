@@ -9,8 +9,8 @@ let CONFIG = {
     switchId: 0, // the id of the switch starts at 0
     allwaysOnMaxPrice: 1.3, // SEK/kWh if the price is below or equal this value the switch should be on no matter if checkNextXHours would turn it off (price without tax or other fees)
     allwaysOffMinPrice: 3.0, // SEK/kWh if the price is above or equal this value the switch should be off no matter if allwaysOnHours would turn it on (price without tax or other fees)
-    allwaysOnHours: [{ from: 21, to: 23 }], //Time spans when allways on format [{from: 8, to:8},{from: 20, to:23}] 
-    onOffLimit: 1.1, // is used to set the price limit where to turn on and of switch
+    allwaysOnHours: [{ from: 21, to: 23 }], //Time spans when allways on format [{from: 8, to:8},{from: 20, to:23}] to have it on from 8:00-8:59 and 20:00 to 23:59
+    onOffLimit: 1.0, // is used to set the price limit where to turn on and of switch
     //so if current price > (avg price * onOffLimit)  then turn off
     //and if current price <= (avg price * onOffLimit) then turn on
     checkNextXHours: 1, // check that the price do not go over the limit the next x hours if it is then switch off now,
@@ -31,6 +31,7 @@ let lastDate = null;
 let currentSwitchState = null;
 let debugSwitchState = null;
 let powerUsage = null;
+let nextAtemptToGetData = 0;
 
 function start() {
     if (CONFIG.inUseLimit < 0.0) {
@@ -99,23 +100,26 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
 }
 
 function getCurrentPrice(offset) {
-    if (lastDate === null || lastDate.hour > date.hour || prices.length === 0) {
+    if (nextAtemptToGetData < date.epoch && offset === 0 && (lastDate === null || lastDate.hour > date.hour || prices.length === 0)) {
+        let apiUrl = CONFIG.priceApiEndpoint + date.yearStr + "/" + date.monthStr + "-" + date.dayStr + "_" + CONFIG.zone + ".json";
+        print("Get prises from: " + apiUrl);
         Shelly.call(
             "http.get",
             {
-                url: CONFIG.priceApiEndpoint + date.yearStr + "/" + date.monthStr + "-" + date.dayStr + "_" + CONFIG.zone + ".json",
+                url: apiUrl,
             }, processCurrentPriceResponse, { offset: offset });
-    } else if (offset > 0) {
+    } else if (nextAtemptToGetData < date.epoch && offset > 0) {
         let offsetDate = epochToDate(date.epoch + (60 * 60 * offset), CONFIG.timezone, CONFIG.daylightSaving);
+        let apiUrl = CONFIG.priceApiEndpoint + offsetDate.yearStr + "/" + offsetDate.monthStr + "-" + offsetDate.dayStr + "_" + CONFIG.zone + ".json";
+        print("Get tomorrows prises from: " + apiUrl);
         Shelly.call(
             "http.get",
             {
-                url: CONFIG.priceApiEndpoint + offsetDate.yearStr + "/" + offsetDate.monthStr + "-" + offsetDate.dayStr + "_" + CONFIG.zone + ".json",
+                url: apiUrl,
             }, processCurrentPriceResponse, { offset: offset });
-    } else {
+    } else if (prices.length !== 0) {
         switchOnOrOff();
     }
-    lastDate = date;
 }
 
 function processCurrentPriceResponse(response, errorCode, errorMessage, userdata) {
@@ -123,13 +127,28 @@ function processCurrentPriceResponse(response, errorCode, errorMessage, userdata
         print(errorMessage);
         return;
     }
+    if (userdata.offset === 0) {
+        prices = [];
+    }
+    if (response.code !== 200) {
+        nextAtemptToGetData = date.epoch + 1800; //Wait 30 minutes before trying again
+        print("Error getting price with offset " + JSON.stringify(userdata.offset) + " got error: " + JSON.stringify(response.code) + " " + response.message);
+        if (prices.length === 0) {
+            print("No prise information availible, will retry after 30 minutes");
+            lastDate = null;
+            return;
+        } else {
+            print("Todays prise is availible will use that information, will retry to get tommorows prices in 30 minutes");
+            switchOnOrOff();
+            return;
+        }
+    }
+
     let data = JSON.parse(response.body);
     let sum = 0.0;
     min = null;
     max = null;
-    if (userdata.offset === 0) {
-        prices = [];
-    }
+
     for (let i in data) {
         let o = data[i];
         let h = JSON.parse(o.time_start.slice(11, 13)) + userdata.offset;
@@ -139,14 +158,19 @@ function processCurrentPriceResponse(response, errorCode, errorMessage, userdata
         max = max === null || o.SEK_per_kWh > max ? o.SEK_per_kWh : max;
     }
     avg = userdata.offset === 0 ? sum / data.length : avg;
-    switchOnOrOff();
-}
-
-function switchOnOrOff() {
+    if (userdata.offset === 0) {
+        lastDate = date;
+    }
     if (prices.length === 24 && date.hour >= CONFIG.tomorowsPricesAfter) {
         getCurrentPrice(24);
         return;
     }
+    
+    switchOnOrOff();
+}
+
+function switchOnOrOff() {
+
     let limit = avg * CONFIG.onOffLimit;
     let newSwitchState = true;
     for (let i = 0; i <= CONFIG.checkNextXHours && newSwitchState; i++) {
@@ -173,7 +197,7 @@ function switchOnOrOff() {
         print("Overriding switch to off as current price is above allways off price");
         newSwitchState = false;
     }
-    
+
     if (CONFIG.invertSwitch) {
         newSwitchState = !newSwitchState;
         print("Inverting wanted switch state to: " + (newSwitchState ? "on" : "off"));
@@ -190,7 +214,7 @@ function switchOnOrOff() {
         return;
     }
     if (CONFIG.debugMode) {
-        print("Debug mode on, simulating changing switch to: " + (newSwitchState ? "on" : "off") + ")");
+        print("Debug mode on, simulating changing switch to: " + (newSwitchState ? "on" : "off"));
         debugSwitchState = newSwitchState;
     } else {
         Shelly.call(
