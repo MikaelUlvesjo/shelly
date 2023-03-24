@@ -100,7 +100,7 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
 }
 
 function getCurrentPrice(offset) {
-    if (nextAtemptToGetData < date.epoch && offset === 0 && (lastDate === null || lastDate.day != date.day || prices.length === 0)) {
+    if (nextAtemptToGetData < date.epoch && offset === 0 && (lastDate === null || lastDate.day !== date.day || prices.length === 0)) {
         let apiUrl = CONFIG.priceApiEndpoint + date.yearStr + "/" + date.monthStr + "-" + date.dayStr + "_" + CONFIG.zone + ".json";
         print("Get prises from: " + apiUrl);
         Shelly.call(
