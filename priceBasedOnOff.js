@@ -21,8 +21,8 @@ let CONFIG = {
     invertSwitch: false, // invert the switch action. Set inUseLimit: -1.0 to use this.
     debugMode: true, // Set to false to enable switching of power.
     switchMode: false, // Set to true to swith power on and of based on price
-    colorMode: false, // Set to true to change color on shelly plus plug s led from green to red based on price. Lowest price of the day will be green and heighest price of the day will be red
-    colors: ["0,100,0", "50,100,0", "100,50,0", "100,0,0"], // Colors used for shelly plus plug s led
+    colorMode: false, // Set to true to change color on shelly plus plug s led from green to red based on price. Lowest price of the day will be green and highest price of the day will be red
+    colors: ["0,100,0", "50,100,0", "100,50,0", "100,0,0"], //Colors used for shelly plus plug s led
 };
 let prices = [];
 let avg = null;
