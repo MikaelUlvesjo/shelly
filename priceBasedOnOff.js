@@ -20,6 +20,9 @@ let CONFIG = {
     // if stopAtDataEnd is true will only check current days values and if it passes the end of the data it will stop checking more values,
     invertSwitch: false, // invert the switch action. Set inUseLimit: -1.0 to use this.
     debugMode: true, // Set to false to enable switching of power.
+    switchMode: false, // Set to true to swith power on and of based on price
+    colorMode: false, // Set to true to change color on shelly plus plug s led from green to red based on price. Lowest price of the day will be green and heighest price of the day will be red
+    colors: ["0,100,0", "50,100,0", "100,50,0", "100,0,0"], // Colors used for shelly plus plug s led
 };
 let prices = [];
 let avg = null;
@@ -33,6 +36,10 @@ let debugSwitchState = null;
 let powerUsage = null;
 let nextAtemptToGetData = 0;
 
+function sendRequest(api, data, callback, userData) {
+    Shelly.call(api, data, callback, userData);
+}
+
 function start() {
     if (CONFIG.inUseLimit < 0.0) {
         getCurrentDate();
@@ -42,7 +49,7 @@ function start() {
 }
 
 function getCurrentDate() {
-    Shelly.call("Sys.GetStatus",
+    sendRequest("Sys.GetStatus",
         {
             id: CONFIG.switchId,
         }, processCurrentDate);
@@ -58,7 +65,7 @@ function processCurrentDate(response, errorCode, errorMessage) {
 }
 
 function getCurrentUsage() {
-    Shelly.call("switch.getstatus",
+    sendRequest("switch.getstatus",
         {
             id: CONFIG.switchId,
         }, processCurrentUsageResponse);
@@ -86,24 +93,22 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
     if (currentSwitchState === true) {
         if (CONFIG.inUseLimit < 0.0) {
             print("Switch is on");
-            getCurrentPrice(0);
         } else if (powerUsage > CONFIG.inUseLimit) {
             print("Switch is on and used, not checking price. Current usage: " + JSON.stringify(powerUsage) + "w");
         } else {
             print("Switch is on and not used. Current usage: " + JSON.stringify(powerUsage) + "w");
-            getCurrentPrice(0);
         }
     } else {
         print("Switch is off");
-        getCurrentPrice(0);
     }
+    getCurrentPrice(0);
 }
 
 function getCurrentPrice(offset) {
     if (nextAtemptToGetData < date.epoch && offset === 0 && (lastDate === null || lastDate.day !== date.day || prices.length === 0)) {
         let apiUrl = CONFIG.priceApiEndpoint + date.yearStr + "/" + date.monthStr + "-" + date.dayStr + "_" + CONFIG.zone + ".json";
         print("Get prises from: " + apiUrl);
-        Shelly.call(
+        sendRequest(
             "http.get",
             {
                 url: apiUrl,
@@ -112,12 +117,13 @@ function getCurrentPrice(offset) {
         let offsetDate = epochToDate(date.epoch + (60 * 60 * offset), CONFIG.timezone, CONFIG.daylightSaving);
         let apiUrl = CONFIG.priceApiEndpoint + offsetDate.yearStr + "/" + offsetDate.monthStr + "-" + offsetDate.dayStr + "_" + CONFIG.zone + ".json";
         print("Get tomorrows prises from: " + apiUrl);
-        Shelly.call(
+        sendRequest(
             "http.get",
             {
                 url: apiUrl,
             }, processCurrentPriceResponse, { offset: offset });
     } else if (prices.length !== 0) {
+        setColor();
         switchOnOrOff();
     }
 }
@@ -139,6 +145,7 @@ function processCurrentPriceResponse(response, errorCode, errorMessage, userdata
             return;
         } else {
             print("Todays prise is availible will use that information, will retry to get tommorows prices in 30 minutes");
+            setColor();
             switchOnOrOff();
             return;
         }
@@ -165,12 +172,14 @@ function processCurrentPriceResponse(response, errorCode, errorMessage, userdata
         getCurrentPrice(24);
         return;
     }
-    
+    setColor();
     switchOnOrOff();
 }
 
 function switchOnOrOff() {
-
+    if (!CONFIG.switchMode) {
+        return;
+    }
     let limit = avg * CONFIG.onOffLimit;
     let newSwitchState = true;
     for (let i = 0; i <= CONFIG.checkNextXHours && newSwitchState; i++) {
@@ -217,7 +226,7 @@ function switchOnOrOff() {
         print("Debug mode on, simulating changing switch to: " + (newSwitchState ? "on" : "off"));
         debugSwitchState = newSwitchState;
     } else {
-        Shelly.call(
+        sendRequest(
             "Switch.Set",
             {
                 id: CONFIG.switchId,
@@ -228,6 +237,33 @@ function switchOnOrOff() {
                     print(errorMessage);
                     return;
                 }
+            }
+        );
+    }
+}
+
+function setColor() {
+    if (CONFIG.colorMode) {
+        let percent = Math.round(100 * (prices[date.hour] - min) / (max - min));
+        let interval = 100 / CONFIG.colors.length;
+        let color = "0,0,100";
+        for (let i = 0; i < CONFIG.colors.length; i++) {
+            if (percent >= (i * interval) ) {
+                color = CONFIG.colors[i];
+            }
+        }
+        print("Setting color to rgb[" + color + "]");
+        sendRequest(
+            "PLUGS_UI.SetConfig",
+            "{\"config\": {\"leds\": {\"night_mode\": { \"active_between\": [\"21:00\", \"07:00\"], \"brightness\": 5, \"enable\": true },\"colors\": {\"power\": { \"brightness\": 25 }," +
+            "\"switch:0\": {\"off\": {\"brightness\": 20,\"rgb\": [ " + color + "]}," +
+            "\"on\": {\"brightness\": 30,\"rgb\": [" + color + "]}}}, \"mode\": \"switch\"}}}",
+            function (response, errorCode, errorMessage) {
+                if (errorCode !== 0) {
+                    print(errorMessage);
+                    return;
+                }
+                print(JSON.stringify(response));
             }
         );
     }
