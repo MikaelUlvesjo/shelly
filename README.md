@@ -31,4 +31,7 @@ Coinfig:
     // if stopAtDataEnd is true will only check current days values and if it passes the end of the data it will stop checking more values,
 -   invertSwitch: false, // invert the switch action.
 -   debugMode: true, // Set to false to enable switching of power.
+-   switchMode: true, // Set to true to swith power on and of based on price
+-   colorMode: true, // Set to true to change color on shelly plus plug s led from green to red based on price. Lowest price of the day will be green and highest price of the day will be red
+-   colors: ["0,100,0", "50,100,0", "100,50,0", "100,0,0"], //Colors used for shelly plus plug s led
 
