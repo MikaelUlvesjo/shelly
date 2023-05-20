@@ -225,6 +225,10 @@ function switchOnOrOff() {
         print("Overriding switch to off as current price is above allways off price");
         newSwitchState = false;
     }
+    if (powerUsage >= CONFIG.inUseLimit) {
+        print("Power usage is over inUseLimit: " + JSON.stringify(powerUsage) + " >= " + JSON.stringify(CONFIG.inUseLimit));
+        newSwitchState = true;
+    }
 
     if (CONFIG.invertSwitch) {
         newSwitchState = !newSwitchState;
@@ -233,18 +237,13 @@ function switchOnOrOff() {
     if (currentSwitchState === newSwitchState) {
         print("No state change... ( current state: " + (newSwitchState ? "on" : "off") + ")");
         return;
-    } else if (newSwitchState === false) {
-        print("Switching off!");
-    } else if (newSwitchState === true) {
-        print("Switching on!");
-    } else {
-        print("Unknown state");
-        return;
     }
+    
     if (CONFIG.debugMode) {
         print("Debug mode on, simulating changing switch to: " + (newSwitchState ? "on" : "off"));
         debugSwitchState = newSwitchState;
     } else {
+        print("Changing switch to: " + (newSwitchState ? "on" : "off"));
         sendRequest(
             "Switch.Set",
             {
