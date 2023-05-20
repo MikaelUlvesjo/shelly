@@ -24,7 +24,7 @@ let CONFIG = {
     debugMode: true, // Set to false to enable switching of power.
     switchMode: false, // Set to true to switch power on and of based on price
     colorMode: true, // Set to true to change color on shelly plus plug s led from green to red based on price. Lowest price of the day will be green and heighest price of the day will be red and 
-    colors: ["0,100,0", "100,100,0", "100,0,100", "100,0,0"], // (red, green ,blue from 0 to 100) Colors used for shelly plus plug s led
+    colors: [[0, 100, 0], [100, 100, 0], [100, 0, 100], [100, 0, 0]], // (red, green ,blue from 0 to 100) Colors used for shelly plus plug s led
     //Can be any number of colors where the first one is for the lowest price and the last for the max price.
 };
 let prices = [];
@@ -36,8 +36,28 @@ let date = null;
 let lastDate = null;
 let currentSwitchState = null;
 let debugSwitchState = null;
-let powerUsage = null;
+let powerUsage = 0.0;
 let nextAtemptToGetData = 0;
+let colorConfig = {
+    "config": {
+        "leds": {
+            "night_mode": { "active_between": ["21:00", "07:00"], "brightness": 5, "enable": true },
+            "colors": {
+                "power": { "brightness": 25 },
+                "switch:0": {
+                    "off": {
+                        "brightness": 20,
+                        "rgb": [100, 100, 100]
+                    },
+                    "on": {
+                        "brightness": 30,
+                        "rgb": [100, 100, 100]
+                    }
+                }
+            }, "mode": "switch"
+        }
+    }
+};
 
 function sendRequest(api, data, callback, userData) {
     Shelly.call(api, data, callback, userData);
@@ -107,17 +127,6 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
             print("Overiding currentSwitchState (" + (currentSwitchState ? "on" : "off") + ") with debugSwitchState: " + (debugSwitchState ? "on" : "off"));
         }
         currentSwitchState = debugSwitchState;
-    }
-    if (currentSwitchState === true) {
-        if (CONFIG.inUseLimit < 0.0) {
-            print("Switch is on");
-        } else if (powerUsage > CONFIG.inUseLimit) {
-            print("Switch is on and used, not checking price. Current usage: " + JSON.stringify(powerUsage) + "w");
-        } else {
-            print("Switch is on and not used. Current usage: " + JSON.stringify(powerUsage) + "w");
-        }
-    } else {
-        print("Switch is off");
     }
     getCurrentPrice(0);
 }
@@ -238,7 +247,7 @@ function switchOnOrOff() {
         print("No state change... ( current state: " + (newSwitchState ? "on" : "off") + ")");
         return;
     }
-    
+
     if (CONFIG.debugMode) {
         print("Debug mode on, simulating changing switch to: " + (newSwitchState ? "on" : "off"));
         debugSwitchState = newSwitchState;
@@ -264,7 +273,7 @@ function setColor() {
     if (CONFIG.colorMode) {
         let percent = Math.round(100 * (prices[date.hour] - min) / (max - min));
         let interval = 100 / CONFIG.colors.length;
-        let color = "0,0,100";
+        let color = [0, 0, 100];
         for (let i = 0; i < CONFIG.colors.length; i++) {
             if (percent >= (i * interval)) {
                 color = CONFIG.colors[i];
@@ -272,18 +281,18 @@ function setColor() {
         }
         if (prices[date.hour] <= CONFIG.allwaysOnMaxPrice) {
             color = CONFIG.colors[0];
-            print("Price below allwaysOnMaxPrice, Setting color to rgb[" + color + "]");
+            print("Price below allwaysOnMaxPrice, Setting color to rgb: " + JSON.stringify(color));
         } else if (prices[date.hour] >= CONFIG.allwaysOffMinPrice) {
             color = CONFIG.colors[CONFIG.colors.length - 1];
-            print("Price above allwaysOffMinPrice, Setting color to rgb[" + color + "]");
+            print("Price above allwaysOffMinPrice, Setting color to rgb: " + JSON.stringify(color));
         } else {
-            print("Setting color to rgb[" + color + "]");
+            print("Setting color to rgb: " + JSON.stringify(color));
         }
+        colorConfig.config.leds.colors["switch:" + JSON.stringify(CONFIG.switchId)].off.rgb = color;
+        colorConfig.config.leds.colors["switch:" + JSON.stringify(CONFIG.switchId)].on.rgb = color;
         sendRequest(
             "PLUGS_UI.SetConfig",
-            "{\"config\": {\"leds\": {\"night_mode\": { \"active_between\": [\"21:00\", \"07:00\"], \"brightness\": 5, \"enable\": true },\"colors\": {\"power\": { \"brightness\": 25 }," +
-            "\"switch:0\": {\"off\": {\"brightness\": 20,\"rgb\": [ " + color + "]}," +
-            "\"on\": {\"brightness\": 30,\"rgb\": [" + color + "]}}}, \"mode\": \"switch\"}}}",
+            colorConfig,
             function (response, errorCode, errorMessage) {
                 if (errorCode !== 0) {
                     print(errorMessage);
