@@ -234,7 +234,7 @@ function switchOnOrOff() {
         print("Overriding switch to off as current price is above allways off price");
         newSwitchState = false;
     }
-    if (powerUsage >= CONFIG.inUseLimit) {
+    if (powerUsage >= CONFIG.inUseLimit && CONFIG.inUseLimit >= 0.0) {
         print("Power usage is over inUseLimit: " + JSON.stringify(powerUsage) + " >= " + JSON.stringify(CONFIG.inUseLimit));
         newSwitchState = true;
     }
