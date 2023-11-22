@@ -7,7 +7,12 @@ With support for:
 * daylight saving time
 * timezone
 
-## priceBasedOnOff.js
+## priceBasedOnOff.js / priceBasedOnOff_for_1.0.xV.js
+
+If you use a 1.0.x firmware use: priceBasedOnOff_for_1.0.xV.js
+
+If you are using a 0.x.x firmware use priceBasedOnOff.js
+
 Uses the api from https://www.elprisetjustnu.se/elpris-api 
 Coinfig:
 -    priceApiEndpoint: "https://www.elprisetjustnu.se/api/v1/prices/",   // see https://www.elprisetjustnu.se/elpris-api
