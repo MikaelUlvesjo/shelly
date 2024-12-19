@@ -311,7 +311,7 @@ function epochToDate(epochTimeIn, timezone, daylightSavingTime) {
     let secondsInDay = secondsInHour * 24;
     let secondsInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     let secondsInYear = 0;
-    let leepseconds = 0;
+    let leapseconds = 0;
     let epochTime = epochTimeIn + (timezone * secondsInHour);
     let dayOfWeek = (Math.floor(epochTime / secondsInDay) + 4) % 7;
     let daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -322,19 +322,20 @@ function epochToDate(epochTimeIn, timezone, daylightSavingTime) {
 
     let years = Math.floor(epochTime / secondsInYear) + 1970;
     for (let i = 1970; i < years; i++) {
-        leepseconds += i % 400 === 0 || (i % 100 !== 0 && i % 4 === 0) ? secondsInDay : 0;
+        leapseconds += i % 400 === 0 || (i % 100 !== 0 && i % 4 === 0) ? secondsInDay : 0;
     }
 
-    let remainder = (epochTime % secondsInYear) - leepseconds;
+    let remainder = (epochTime % secondsInYear) - leapseconds;
     if (remainder < 0) {
         years--;
         remainder += secondsInYear;
+        remainder += ((years % 400 === 0 || (years % 100 !== 0 && years % 4 === 0)) ? secondsInDay : 0);
     }
 
-    let leep = years % 400 === 0 || (years % 100 !== 0 && years % 4 === 0);
+    let leap = years % 400 === 0 || (years % 100 !== 0 && years % 4 === 0);
     let months = 0;
-    while (remainder >= (secondsInMonth[months] * secondsInDay) + (months === 1 && leep ? secondsInDay : 0)) {
-        remainder = (remainder - secondsInMonth[months] * secondsInDay) - (months === 1 && leep ? secondsInDay : 0);
+    while (remainder >= (secondsInMonth[months] * secondsInDay) + (months === 1 && leap ? secondsInDay : 0)) {
+        remainder = (remainder - secondsInMonth[months] * secondsInDay) - (months === 1 && leap ? secondsInDay : 0);
         months++;
     }
 
