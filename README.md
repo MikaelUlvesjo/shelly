@@ -13,9 +13,9 @@ If you use a 1.0.x firmware use: priceBasedOnOff_for_1.0.xV.js
 
 If you are using a 0.x.x firmware use priceBasedOnOff.js
 
-Uses the api from https://www.elprisetjustnu.se/elpris-api 
+Uses the api from : https://se.elpris.eu/api/v1/prices/ 
 Coinfig:
--    priceApiEndpoint: "https://www.elprisetjustnu.se/api/v1/prices/",   // see https://www.elprisetjustnu.se/elpris-api
+-    priceApiEndpoint: "https://se.elpris.eu/api/v1/prices/",   // see https://se.elpris.eu/
 -    tomorowsPricesAfter: 14, //it will get tomorrows prices and if the time is after 14 for 14:00
 -    timezone: 1, //in positive or negative value e.g: 1 for CET or -6 for CST
 -    daylightSaving: true,//boolean, if true and date is after last Sunday in March and Before last Sunday in October 1 hour weill be added to timezone.
