@@ -1,5 +1,5 @@
 let CONFIG = {
-    priceApiEndpoint: "https://www.elprisetjustnu.se/api/v1/prices/",   // see https://www.elprisetjustnu.se/elpris-api
+    priceApiEndpoint: "https://se.elpris.eu/api/v1/prices/",   // see https://se.elpris.eu/
     tomorowsPricesAfter: 15, //it will get tomorrows prices and if the time is after 14 for 14:00
     timezone: 1, //in positive or negative value e.g: 1 for CET or -6 for CST
     daylightSaving: true,//boolean, if true and date is after last Sunday in March and Before last Sunday in October 1 hour weill be added to timezone.
@@ -134,7 +134,7 @@ function processCurrentUsageResponse(response, errorCode, errorMessage) {
 
 function getCurrentPrice(offset) {
     if (nextAtemptToGetData < date.epoch && offset === 0 && (lastDate === null || lastDate.day !== date.day || prices.length === 0)) {
-        let apiUrl = CONFIG.priceApiEndpoint + date.yearStr + "/" + date.monthStr + "-" + date.dayStr + "_" + CONFIG.zone + ".json";
+        let apiUrl = CONFIG.priceApiEndpoint + date.yearStr + "/" + date.monthStr + "-" + date.dayStr + "_" + CONFIG.zone + ".json?legacy=1";
         print("Get prises from: " + apiUrl);
         sendRequest(
             "http.get",
@@ -143,7 +143,7 @@ function getCurrentPrice(offset) {
             }, processCurrentPriceResponse, { offset: offset });
     } else if (nextAtemptToGetData < date.epoch && offset > 0) {
         let offsetDate = epochToDate(date.epoch + (60 * 60 * offset), CONFIG.timezone, CONFIG.daylightSaving);
-        let apiUrl = CONFIG.priceApiEndpoint + offsetDate.yearStr + "/" + offsetDate.monthStr + "-" + offsetDate.dayStr + "_" + CONFIG.zone + ".json";
+        let apiUrl = CONFIG.priceApiEndpoint + offsetDate.yearStr + "/" + offsetDate.monthStr + "-" + offsetDate.dayStr + "_" + CONFIG.zone + ".json?legacy=1";
         print("Get tomorrows prises from: " + apiUrl);
         sendRequest(
             "http.get",
