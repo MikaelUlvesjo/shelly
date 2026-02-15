@@ -39,26 +39,6 @@ let currentSwitchState = null;
 let debugSwitchState = null;
 let powerUsage = 0.0;
 let nextAtemptToGetData = 0;
-let colorConfig = {
-    "config": {
-        "leds": {
-            "night_mode": { "active_between": ["21:00", "07:00"], "brightness": 5, "enable": true },
-            "colors": {
-                "power": { "brightness": 25 },
-                "switch:0": {
-                    "off": {
-                        "brightness": 20,
-                        "rgb": [100, 100, 100]
-                    },
-                    "on": {
-                        "brightness": 30,
-                        "rgb": [100, 100, 100]
-                    }
-                }
-            }, "mode": "switch"
-        }
-    }
-};
 
 function sendRequest(api, data, callback, userData) {
     Shelly.call(api, data, callback, userData);
@@ -271,38 +251,56 @@ function switchOnOrOff() {
 }
 
 function setColor() {
-    if (CONFIG.colorMode) {
-        let percent = Math.round(100 * (prices[date.hour] - min) / (max - min));
-        let interval = 100 / CONFIG.colors.length;
-        let color = [0, 0, 100];
-        for (let i = 0; i < CONFIG.colors.length; i++) {
-            if (percent >= (i * interval)) {
-                color = CONFIG.colors[i];
-            }
+    if (!CONFIG.colorMode) return;
+
+    // Calculate color based on price
+    let percent = Math.round(100 * (prices[date.hour] - min) / (max - min));
+    let interval = 100 / CONFIG.colors.length;
+    let color = CONFIG.colors[0]; // Default to first color
+
+    for (let i = 0; i < CONFIG.colors.length; i++) {
+        if (percent >= (i * interval)) {
+            color = CONFIG.colors[i];
         }
-        if (prices[date.hour] <= CONFIG.allwaysOnMaxPrice) {
-            color = CONFIG.colors[0];
-            print("Price below allwaysOnMaxPrice, Setting color to rgb: " + JSON.stringify(color));
-        } else if (prices[date.hour] >= CONFIG.allwaysOffMinPrice) {
-            color = CONFIG.colors[CONFIG.colors.length - 1];
-            print("Price above allwaysOffMinPrice, Setting color to rgb: " + JSON.stringify(color));
-        } else {
-            print("Setting color to rgb: " + JSON.stringify(color));
-        }
-        colorConfig.config.leds.colors["switch:" + JSON.stringify(CONFIG.switchId)].off.rgb = color;
-        colorConfig.config.leds.colors["switch:" + JSON.stringify(CONFIG.switchId)].on.rgb = color;
-        sendRequest(
-            "PLUGS_UI.SetConfig",
-            colorConfig,
-            function (response, errorCode, errorMessage) {
-                if (errorCode !== 0) {
-                    print(errorMessage);
-                    return;
-                }
-                print(JSON.stringify(response));
-            }
-        );
     }
+
+    // Overrides for price limits
+    if (prices[date.hour] <= CONFIG.allwaysOnMaxPrice) {
+        color = CONFIG.colors[0];
+    } else if (prices[date.hour] >= CONFIG.allwaysOffMinPrice) {
+        color = CONFIG.colors[CONFIG.colors.length - 1];
+    }
+
+    // Create the key as a simple string variable
+    let sKey = "switch:" + JSON.stringify(CONFIG.switchId);
+    
+    // Build the nested structure explicitly
+    let ledConfig = {
+        "colors": {},
+        "night_mode": { "active_between": ["21:00", "07:00"], "brightness": 5, "enable": true },
+        "mode": "switch"
+    };
+    
+    // Assign the switch settings using the key
+    ledConfig["colors"][sKey] = {
+        "off": { "brightness": 20, "rgb": color },
+        "on": { "brightness": 30, "rgb": color }
+    };
+    
+    // Final payload
+    let payload = { "config": { "leds": ledConfig } };
+
+    print("Updating LED for", sKey, "to color:", JSON.stringify(color));
+
+    Shelly.call(
+        "PLUGS_UI.SetConfig",
+        payload,
+        function (res, err, msg) {
+            if (err !== 0) {
+                print("RPC Error:", msg);
+            }
+        }
+    );
 }
 
 function epochToDate(epochTimeIn, timezone, daylightSavingTime) {
